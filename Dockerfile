@@ -3,6 +3,5 @@ RUN mkdir /app
 WORKDIR /app
 ADD requirements.txt /app
 RUN pip3 install -r requirements.txt
-ADD web /app
-EXPOSE 8000
-ENTRYPOINT ["gunicorn", "-b", "0.0.0.0:8000", "app:app"]
+ADD . /app
+CMD ["python", "app.py"]
