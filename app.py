@@ -4,7 +4,7 @@ from flask import Flask, request, make_response, g
 from dotenv import load_dotenv
 from bcrypt import hashpw, gensalt, checkpw
 from datetime import datetime, timedelta
-from redis import Redis, StrictRedis
+from redis import StrictRedis
 from os import getenv
 from jwt import encode, decode, InvalidTokenError
 from flask_hal import HAL
@@ -12,7 +12,6 @@ from flask_hal.document import Document, Embedded
 from flask_hal.link import Link
 from flask_cors import CORS, cross_origin
 
-# db = Redis(host='redis', port=6379, db=0)
 
 REDIS_HOST = getenv("REDIS_HOST")
 REDIS_PASS = getenv("REDIS_PASS")
@@ -64,6 +63,7 @@ def before_request_func():
 
 
 @app.route('/', methods=['GET', 'OPTIONS'])
+@cross_origin()
 def root():
     if request.method == 'OPTIONS':
         return allowed_methods(['GET'])
@@ -81,6 +81,7 @@ def root():
 
 
 @app.route('/auth', methods=['GET', 'OPTIONS'])
+@cross_origin()
 def auth():
     if request.method == 'OPTIONS':
         return allowed_methods(['GET'])
@@ -128,7 +129,7 @@ def add_user():
 
 
 @app.route('/auth/login', methods=["POST"])
-@cross_origin(supports_credentials=True)
+@cross_origin()
 def auth_login():
     if request.method == 'OPTIONS':
         return allowed_methods(['POST'])
@@ -149,12 +150,13 @@ def auth_login():
 
 
 @app.route('/labels', methods=['OPTIONS'])
+@cross_origin()
 def sender_get_labels():
     return allowed_methods(['GET', 'POST'])
 
 
 @app.route('/labels', methods=["GET"])
-@cross_origin(supports_credentials=True)
+@cross_origin()
 def get_labels_by_sender():
     if g.authorization is None:
         return create_message_response("Unauthorized", 401)
@@ -188,7 +190,7 @@ def get_labels_by_sender():
 
 
 @app.route('/labels', methods=["POST"])
-@cross_origin(supports_credentials=True)
+@cross_origin()
 def add_label():
     if g.authorization is None:
         return create_message_response("Unauthorized", 401)
@@ -221,6 +223,7 @@ def add_label():
 
 
 @app.route('/labels/<label_uuid>', methods=['GET', 'OPTIONS'])
+@cross_origin()
 def sender_get_label(label_uuid):
     if request.method == 'OPTIONS':
         return allowed_methods(['GET', 'PUT', 'DELETE'])
@@ -247,7 +250,7 @@ def sender_get_label(label_uuid):
 
 
 @app.route('/packages/<label_uuid>', methods=["PUT"])
-@cross_origin(supports_credentials=True)
+@cross_origin()
 def label_update(label_uuid):
     if g.authorization is None or g.authorization.get('role') != 'courier':
         return create_message_response("Unauthorized", 401)
@@ -275,7 +278,7 @@ def label_update(label_uuid):
 
 
 @app.route('/labels/<label_uuid>', methods=["DELETE"])
-@cross_origin(supports_credentials=True)
+@cross_origin()
 def label_delete(label_uuid):
     if g.authorization is None:
         return create_message_response("Unauthorized", 401)
@@ -296,6 +299,7 @@ def label_delete(label_uuid):
 
 
 @app.route('/packages', methods=['GET', 'OPTIONS'])
+@cross_origin()
 def packages_get():
     if request.method == 'OPTIONS':
         return allowed_methods(['GET', 'POST'])
@@ -324,6 +328,7 @@ def packages_get():
 
 
 @app.route('/packages', methods=['POST'])
+@cross_origin()
 def package_create():
     if g.authorization is None or g.authorization.get('role') != 'courier':
         return create_message_response("Unauthorized", 401)
@@ -354,6 +359,7 @@ def package_create():
 
 
 @app.route('/packages/<package_id>', methods=['GET', 'OPTIONS'])
+@cross_origin()
 def package_get(package_id):
     if request.method == 'OPTIONS':
         return allowed_methods(['GET', 'PUT'])
@@ -375,6 +381,7 @@ def package_get(package_id):
 
 
 @app.route('/packages/<package_id>', methods=['PUT'])
+@cross_origin()
 def package_update(package_id):
     if request.method == 'OPTIONS':
         return allowed_methods(['GET', 'PUT'])
