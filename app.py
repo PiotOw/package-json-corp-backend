@@ -12,7 +12,6 @@ from flask_hal.document import Document, Embedded
 from flask_hal.link import Link
 from flask_cors import CORS, cross_origin
 
-
 REDIS_HOST = getenv("REDIS_HOST")
 REDIS_PASS = getenv("REDIS_PASS")
 db = StrictRedis(host=REDIS_HOST, port=20299, db=0, password=REDIS_PASS)
@@ -58,6 +57,7 @@ def before_request_func():
         g.authorization = None
         print(e)
     return
+
 
 # ==================================OPTIONS========================
 
@@ -113,7 +113,9 @@ def add_user():
         return create_message_response("Invalid username", 400)
     if not re.compile('.{8,}').match(password.strip()):
         return create_message_response("Invalid password", 400)
-    if not re.compile('(?:[A-Za-z0-9!#$%&\'*+/=?^_`{​​|}​​~-]+(?:\\.[A-Za-z0-9!#$%&\'*+/=?^_`{​​|}​​~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?|\\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){​​3}​​(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[A-Za-z0-9-]*[A-Za-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\\])').match(email.strip()):
+    if not re.compile(
+            '(?:[A-Za-z0-9!#$%&\'*+/=?^_`{​​|}​​~-]+(?:\\.[A-Za-z0-9!#$%&\'*+/=?^_`{​​|}​​~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?|\\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){​​3}​​(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[A-Za-z0-9-]*[A-Za-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\\])').match(
+        email.strip()):
         return create_message_response("Invalid email", 400)
     if address is None:
         return create_message_response("Empty address", 400)
@@ -129,7 +131,7 @@ def add_user():
 
 
 @app.route('/auth/login', methods=["POST"])
-@cross_origin()
+@cross_origin(expose_headers=['Authorization'])
 def auth_login():
     if request.method == 'OPTIONS':
         return allowed_methods(['POST'])
@@ -156,7 +158,7 @@ def sender_get_labels():
 
 
 @app.route('/labels', methods=["GET"])
-@cross_origin()
+@cross_origin(headers=['Authorization'])
 def get_labels_by_sender():
     if g.authorization is None:
         return create_message_response("Unauthorized", 401)
@@ -166,7 +168,7 @@ def get_labels_by_sender():
     label_json = {}
     for key in keys:
         sender = db.hget(key, "sender").decode()
-        if username == sender or g.authorization.get('courier'):
+        if username == sender or g.authorization.get('role') == 'courier':
             label_id = key.decode().split(":")[1]
             link = Link('self', '/labels/' + label_id)
             addressee = db.hget(key, "addressee").decode()
@@ -183,14 +185,14 @@ def get_labels_by_sender():
             }
             data.append(Embedded(data=label_json, links=[link]))
 
-            links = [Link('self', '/labels/{id}' , templated=True)]
-            document = Document(embedded={'data': Embedded(data=data)},
-                                links=links)
-            return document.to_json()
+    links = [Link('self', '/labels/{id}', templated=True)]
+    document = Document(embedded={'data': Embedded(data=data)},
+                        links=links)
+    return document.to_json()
 
 
 @app.route('/labels', methods=["POST"])
-@cross_origin()
+@cross_origin(headers=['Authorization'])
 def add_label():
     if g.authorization is None:
         return create_message_response("Unauthorized", 401)
@@ -211,19 +213,19 @@ def add_label():
     db.hset(f"label:{label_id}", "POBoxId", f"{po_box_id}")
     db.hset(f"label:{label_id}", "sent", "false")
 
-    response = make_response({"id": label_id,
-                              "sender": sender,
-                              "addressee": addressee,
-                              "size": size,
-                              "POBoxId": po_box_id,
-                              "sent": "false"}, 201)
+    data = {"id": str(label_id),
+            "sender": sender,
+            "addressee": addressee,
+            "size": size,
+            "POBoxId": po_box_id,
+            "sent": "false"}
     links = [Link('self', '/labels/' + str(label_id))]
-    document = Document(data=response, links=links)
+    document = Document(data=data, links=links)
     return document.to_json()
 
 
 @app.route('/labels/<label_uuid>', methods=['GET', 'OPTIONS'])
-@cross_origin()
+@cross_origin(headers=['Authorization'])
 def sender_get_label(label_uuid):
     if request.method == 'OPTIONS':
         return allowed_methods(['GET', 'PUT', 'DELETE'])
@@ -249,36 +251,8 @@ def sender_get_label(label_uuid):
     return document.to_json()
 
 
-@app.route('/packages/<label_uuid>', methods=["PUT"])
-@cross_origin()
-def label_update(label_uuid):
-    if g.authorization is None or g.authorization.get('role') != 'courier':
-        return create_message_response("Unauthorized", 401)
-    if not db.hexists(f"label:{label_uuid}", "size"):
-        return create_message_response("Label not Found", 404)
-    db.hset(f"label:{label_uuid}", "sent", "false")
-    username = db.hget(f"label:{label_uuid}", "sender").decode()
-    receiver = db.hget(f"label:{label_uuid}", "receiver").decode()
-    size = db.hget(f"label:{label_uuid}", "size").decode()
-    po_box_id = db.hget(f"label:{label_uuid}", "POBoxId").decode()
-    sent = db.hget(f"label:{label_uuid}", "sent").decode()
-    data = {"labelId": label_uuid,
-            "username": username,
-            "receiver": receiver,
-            "size": size,
-            "POBoxId": po_box_id,
-            "sent": sent}
-
-
-    link = [Link('all', '/labels')]
-
-    document = Document(embedded={'data': Embedded(data={})},
-                        links=link)
-    return document.to_json()
-
-
 @app.route('/labels/<label_uuid>', methods=["DELETE"])
-@cross_origin()
+@cross_origin(headers=['Authorization'])
 def label_delete(label_uuid):
     if g.authorization is None:
         return create_message_response("Unauthorized", 401)
@@ -299,7 +273,7 @@ def label_delete(label_uuid):
 
 
 @app.route('/packages', methods=['GET', 'OPTIONS'])
-@cross_origin()
+@cross_origin(headers=['Authorization'])
 def packages_get():
     if request.method == 'OPTIONS':
         return allowed_methods(['GET', 'POST'])
@@ -315,7 +289,7 @@ def packages_get():
         status = db.hget(key, "status").decode()
         label_id = db.hget(key, "labelId").decode()
         package_json = {
-            "id": label_id,
+            "id": package_id,
             "status": status,
             "labelId": label_id
         }
@@ -323,12 +297,12 @@ def packages_get():
 
     links = [Link('self', '/packages/{id}', templated=True)]
     document = Document(embedded={'data': Embedded(data=data)},
-                                links=links)
+                        links=links)
     return document.to_json()
 
 
 @app.route('/packages', methods=['POST'])
-@cross_origin()
+@cross_origin(headers=['Authorization'])
 def package_create():
     if g.authorization is None or g.authorization.get('role') != 'courier':
         return create_message_response("Unauthorized", 401)
@@ -354,12 +328,12 @@ def package_create():
 
     links = [Link('self', '/packages/{id}', templated=True)]
     document = Document(embedded={'data': Embedded(data=data)},
-                                links=links)
+                        links=links)
     return document.to_json()
 
 
 @app.route('/packages/<package_id>', methods=['GET', 'OPTIONS'])
-@cross_origin()
+@cross_origin(headers=['Authorization'])
 def package_get(package_id):
     if request.method == 'OPTIONS':
         return allowed_methods(['GET', 'PUT'])
@@ -381,11 +355,11 @@ def package_get(package_id):
 
 
 @app.route('/packages/<package_id>', methods=['PUT'])
-@cross_origin()
+@cross_origin(headers=['Authorization'])
 def package_update(package_id):
     if request.method == 'OPTIONS':
         return allowed_methods(['GET', 'PUT'])
-    if g.authorization is None or g.authorization.get('role') == 'courier':
+    if g.authorization is None or g.authorization.get('role') != 'courier':
         return create_message_response("Unauthorized", 401)
     if not db.hexists(f"package:{package_id}", "labelId"):
         return create_message_response("Package not found", 404)
@@ -403,11 +377,6 @@ def package_update(package_id):
     links = [Link('self', '/packages/' + package_id)]
     document = Document(data=data, links=links)
     return document.to_json()
-
-
-
-
-
 
 
 def create_message_response(msg, status):
