@@ -79,6 +79,31 @@ def root():
 
 # ==================================AUTH========================
 
+@app.route('/auth/login/auth0', methods=['POST'])
+@cross_origin(expose_headers=['Authorization'])
+def auth_auth0():
+    email = request.json.get('email')
+    sub = request.json.get('sub')
+
+    if user_exists(email):
+        return create_message_response("Username already exists", 400)
+
+    is_registered = db.hexists(f"auth:{email}", "sub")
+
+    if not is_registered:
+        salt = gensalt(5)
+        password = sub.encode()
+        hashed_sub = hashpw(password, salt)
+        db.hset(f"auth0:{email}", "sub", hashed_sub)
+
+    if not auth0_verify_user(email, sub):
+        return create_message_response("Incorrect username or/and password", 400)
+
+    token = generate_auth_token(email)
+    response = make_response('', 200)
+    response.headers['Authorization'] = 'Bearer ' + token.decode()
+    return response
+
 
 @app.route('/auth', methods=['GET', 'OPTIONS'])
 @cross_origin()
@@ -405,6 +430,15 @@ def save_user(username, firstname, lastname, address, password, email):
 def verify_user(username, password):
     password = password.encode()
     hashed = db.hget(f"user:{username}", "password")
+    if not hashed:
+        return False
+
+    return checkpw(password, hashed)
+
+
+def auth0_verify_user(email, sub):
+    password = sub.encode()
+    hashed = db.hget(f"auth0:{email}", "sub")
     if not hashed:
         return False
 
